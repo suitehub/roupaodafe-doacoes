@@ -1,0 +1,14 @@
+{
+  "name": "roupaodafe-doacoes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend serverless (Vercel) do checkout de doações do Roupão da Fé via Mercado Pago Checkout Pro",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "dev": "npx vercel dev",
+    "deploy": "npx vercel --prod",
+    "logs": "npx vercel logs --prod"
+  }
+}
