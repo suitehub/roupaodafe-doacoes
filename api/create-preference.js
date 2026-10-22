@@ -48,6 +48,8 @@ function allowedOrigins() {
 
   /* padrão: site publicado + ambiente local de desenvolvimento */
   return [
+    "https://roupaodafe.com",
+    "https://www.roupaodafe.com",
     "https://suitehub.github.io",
     "http://localhost:8123",
     "http://127.0.0.1:8123",
@@ -155,7 +157,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const site = (process.env.SITE_URL || "https://suitehub.github.io/roupaodafe/").replace(
+  const site = (process.env.SITE_URL || "https://roupaodafe.com/").replace(
     /[?#].*$/,
     ""
   );

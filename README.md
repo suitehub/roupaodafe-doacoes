@@ -72,8 +72,8 @@ e cadastre, marcando *Production*, *Preview* e *Development*:
 | Nome | Valor |
 | --- | --- |
 | `MP_ACCESS_TOKEN` | `APP_USR-...` (produção) ou `TEST-...` |
-| `SITE_URL` | `https://suitehub.github.io/roupaodafe/` |
-| `ALLOWED_ORIGINS` | `https://suitehub.github.io,http://localhost:8123` |
+| `SITE_URL` | `https://roupaodafe.com/` |
+| `ALLOWED_ORIGINS` | `https://roupaodafe.com,https://www.roupaodafe.com,http://localhost:8123` |
 | `MP_WEBHOOK_URL` | `https://roupaodafe-doacoes.vercel.app/api/webhook` |
 | `MP_WEBHOOK_SECRET` | (opcional — só se configurar assinatura no MP) |
 
