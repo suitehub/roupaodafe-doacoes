@@ -38,16 +38,8 @@ function rateLimited(ip) {
 }
 
 function allowedOrigins() {
-  const raw = (process.env.ALLOWED_ORIGINS || "").trim();
-  const list = raw
-    .split(",")
-    .map((s) => s.trim().replace(/\/$/, ""))
-    .filter(Boolean);
-
-  if (list.length) return list;
-
-  /* padrão: site publicado + ambiente local de desenvolvimento */
-  return [
+  /* domínios do projeto — sempre liberados (site novo, antigo e ambiente local) */
+  const base = [
     "https://roupaodafe.com",
     "https://www.roupaodafe.com",
     "http://roupaodafe.com",
@@ -56,6 +48,15 @@ function allowedOrigins() {
     "http://localhost:8123",
     "http://127.0.0.1:8123",
   ];
+
+  /* ALLOWED_ORIGINS só acrescenta origens extras (ex.: um domínio novo) */
+  const raw = (process.env.ALLOWED_ORIGINS || "").trim();
+  const extra = raw
+    .split(",")
+    .map((s) => s.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return Array.from(new Set(base.concat(extra)));
 }
 
 function applyCors(req, res) {
