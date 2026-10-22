@@ -59,6 +59,25 @@ function allowedOrigins() {
   return Array.from(new Set(base.concat(extra)));
 }
 
+function siteBase(req) {
+  /* endereço de volta do checkout: usa a origem da própria página quando é
+     conhecida (à prova de SITE_URL mal configurada) e, senão, SITE_URL. */
+  const origin = (req.headers.origin || "").trim().replace(/\/+$/, "");
+  if (origin && allowedOrigins().indexOf(origin) !== -1) {
+    const seguro = /^http:\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(origin)
+      ? origin
+      : origin.replace(/^http:/i, "https:");
+    return seguro + "/";
+  }
+
+  const raw = (process.env.SITE_URL || "").trim().replace(/[?#].*$/, "");
+  const normalized = /^https?:\/\/[^/]+/i.test(raw)
+    ? raw
+    : "https://roupaodafe.com/";
+
+  return normalized.endsWith("/") ? normalized : normalized + "/";
+}
+
 function applyCors(req, res) {
   const origin = (req.headers.origin || "").replace(/\/$/, "");
   if (!origin) return true;
@@ -160,11 +179,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const site = (process.env.SITE_URL || "https://roupaodafe.com/").replace(
-    /[?#].*$/,
-    ""
-  );
-  const base = site.endsWith("/") ? site : site + "/";
+  const base = siteBase(req);
 
   const externalReference =
     "doacao-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8);
