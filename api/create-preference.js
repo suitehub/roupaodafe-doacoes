@@ -227,7 +227,11 @@ module.exports = async function handler(req, res) {
     res.status(200).json({
       ok: true,
       id: data.id,
-      init_point: data.init_point,
+      /* com credencial de teste, manda direto para o checkout de teste */
+      init_point:
+        /^TEST-/.test(accessToken) && data.sandbox_init_point
+          ? data.sandbox_init_point
+          : data.init_point,
       sandbox_init_point: data.sandbox_init_point || null,
     });
   } catch (err) {
