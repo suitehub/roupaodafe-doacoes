@@ -50,6 +50,8 @@ function allowedOrigins() {
   return [
     "https://roupaodafe.com",
     "https://www.roupaodafe.com",
+    "http://roupaodafe.com",
+    "http://www.roupaodafe.com",
     "https://suitehub.github.io",
     "http://localhost:8123",
     "http://127.0.0.1:8123",
