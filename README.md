@@ -1,5 +1,8 @@
 # Doações com Mercado Pago — backend da Vercel
 
+> Este conteúdo está publicado em **https://github.com/suitehub/roupaodafe-doacoes** —
+> é desse repositório que a Vercel publica. Cada `git push` na `main` gera um novo deploy.
+
 Este é o pedacinho de servidor que cria o pagamento no Mercado Pago. Ele fica
 **fora** do GitHub Pages (que só serve arquivos estáticos). O site chama
 `POST /api/create-preference`, recebe um link de checkout e redireciona o
