@@ -59,24 +59,9 @@ function allowedOrigins() {
   return Array.from(new Set(base.concat(extra)));
 }
 
-function normalizarUrlSite(raw) {
-  const cleaned = String(raw || "")
-    .replace(/\s+/g, "")
-    .replace(/[?#].*$/, "");
-
-  try {
-    const u = new URL(cleaned);
-    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("x");
-    const path = u.pathname.endsWith("/") ? u.pathname : u.pathname + "/";
-    return u.origin + path;
-  } catch (err) {
-    return "https://roupaodafe.com/";
-  }
-}
-
 function siteBase(req) {
-  /* endereço de volta do checkout: usa a origem da própria página quando é
-     conhecida (à prova de SITE_URL mal configurada) e, senão, SITE_URL. */
+  /* endereço de volta do checkout: usa a origem da própria página (à prova de
+     SITE_URL mal configurada) e, sem origem conhecida, o domínio oficial. */
   const origin = (req.headers.origin || "").trim().replace(/\/+$/, "");
   if (origin && allowedOrigins().indexOf(origin) !== -1) {
     const seguro = /^http:\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(origin)
@@ -85,7 +70,7 @@ function siteBase(req) {
     return seguro + "/";
   }
 
-  return normalizarUrlSite(process.env.SITE_URL);
+  return "https://roupaodafe.com/";
 }
 
 function applyCors(req, res) {
