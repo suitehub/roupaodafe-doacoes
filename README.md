@@ -72,7 +72,7 @@ e cadastre, marcando *Production*, *Preview* e *Development*:
 | Nome | Valor |
 | --- | --- |
 | `MP_ACCESS_TOKEN` | `APP_USR-...` (produção) ou `TEST-...` |
-| `SITE_URL` | `https://roupaodafe.com/` |
+| `SITE_URL` | opcional — a volta do checkout usa o domínio de origem da página |
 | `ALLOWED_ORIGINS` | `https://roupaodafe.com,https://www.roupaodafe.com,http://localhost:8123` |
 | `MP_WEBHOOK_URL` | `https://roupaodafe-doacoes.vercel.app/api/webhook` |
 | `MP_WEBHOOK_SECRET` | (opcional — só se configurar assinatura no MP) |
@@ -170,5 +170,5 @@ cadastro no painel é só um reforço. Para ver as doações chegando:
 | `origin_not_allowed` | domínio do site fora de `ALLOWED_ORIGINS` |
 | `mercadopago_error` + `invalid_access_token` | token errado, expirado ou de outra conta |
 | botão diz "ainda não configurado" | `MP_ENDPOINT` continua com `SEU-PROJETO` |
-| volta para o site sem mensagem | `SITE_URL` diferente do endereço real do site |
+| volta para o site sem mensagem | a volta do checkout usa a origem da página; confira se o domínio está liberado no CORS |
 | Pix não aparece no checkout | conta do Mercado Pago sem chave Pix cadastrada |
