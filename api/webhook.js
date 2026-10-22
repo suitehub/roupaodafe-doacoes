@@ -4,20 +4,52 @@
  * POST /api/webhook  (ou GET, para o teste de URL do painel)
  *
  * O Mercado Pago chama esta rota sempre que um pagamento muda de status.
- * A função consulta o pagamento na API do Mercado Pago e registra no log da
- * Vercel (Dashboard → projeto → Logs) o valor, o status e a referência.
+ * A função NUNCA confia no conteúdo da notificação: ela consulta o pagamento
+ * na API do Mercado Pago com o Access Token do servidor e confere valor,
+ * moeda e referência antes de registrar.
  *
- * Não guarda dados em banco: serve para você acompanhar as doações e conferir
- * se está tudo chegando. Se um dia quiser enviar e-mail/planilha, é aqui.
+ * Proteções aplicadas:
+ * - assinatura HMAC do Mercado Pago (quando MP_WEBHOOK_SECRET está definida)
+ * - id do pagamento só com dígitos (nada de URL arbitrária)
+ * - rate limit e limite de corpo
+ * - consulta ao provedor com timeout
+ * - log sem dados sensíveis (e-mail mascarado)
  */
 
 const crypto = require("node:crypto");
+const {
+  applySecurityHeaders,
+  jsonError,
+  allowMethods,
+  clientIp,
+  createRateLimiter,
+  readJsonBody,
+  onlyDigits,
+  maskEmail,
+  timingSafeEqualHex,
+} = require("../lib/security");
 
 const MP_API = "https://api.mercadopago.com";
 
+const MIN_AMOUNT = 5;
+const MAX_AMOUNT = 5000;
+
+const rateLimit = createRateLimiter({ limit: 120, windowMs: 60 * 1000 });
+const processed = new Set();
+let warnedNoSecret = false;
+
 function verifySignature(req, paymentId) {
   const secret = (process.env.MP_WEBHOOK_SECRET || "").trim();
-  if (!secret) return true; // verificação opcional
+
+  if (!secret) {
+    if (!warnedNoSecret) {
+      warnedNoSecret = true;
+      console.warn(
+        "[doacao] MP_WEBHOOK_SECRET não configurado: a assinatura do webhook não será verificada"
+      );
+    }
+    return true;
+  }
 
   const signature = req.headers["x-signature"];
   const requestId = req.headers["x-request-id"];
@@ -40,46 +72,39 @@ function verifySignature(req, paymentId) {
     .update(manifest)
     .digest("hex");
 
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(String(parts.v1), "utf8");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  return timingSafeEqualHex(expected, parts.v1);
 }
 
 module.exports = async function handler(req, res) {
+  applySecurityHeaders(res);
+
+  if (!allowMethods(req, res, ["GET", "POST"])) return;
+
   if (req.method === "GET") {
     res.status(200).json({ ok: true });
     return;
   }
 
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "method_not_allowed" });
+  const rl = rateLimit(clientIp(req));
+  if (rl.limited) {
+    res.setHeader("Retry-After", String(rl.retryAfter));
+    jsonError(res, 429, "too_many_requests");
     return;
   }
 
-  let body = req.body;
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body);
-    } catch (err) {
-      body = {};
-    }
+  const parsed = readJsonBody(req, { limit: 4096, allowForm: true });
+  if (!parsed.ok) {
+    jsonError(res, parsed.status, parsed.error);
+    return;
   }
-  body = body || {};
 
+  const body = parsed.body;
   const query = req.query || {};
-  const type =
-    body.type ||
-    body.topic ||
-    query.type ||
-    query.topic ||
-    "";
 
-  const paymentId =
-    (body.data && body.data.id) ||
-    query["data.id"] ||
-    query.id ||
-    "";
+  const type = String(body.type || body.topic || query.type || query.topic || "");
+  const rawId =
+    (body.data && body.data.id) || query["data.id"] || query.id || "";
+  const paymentId = onlyDigits(rawId, 20);
 
   /* notificações que não são de pagamento: responde 200 e ignora */
   if (type !== "payment" || !paymentId) {
@@ -89,7 +114,7 @@ module.exports = async function handler(req, res) {
 
   if (!verifySignature(req, paymentId)) {
     console.warn("[doacao] webhook com assinatura inválida", paymentId);
-    res.status(401).json({ ok: false, error: "invalid_signature" });
+    jsonError(res, 401, "invalid_signature");
     return;
   }
 
@@ -99,38 +124,92 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const response = await fetch(`${MP_API}/v1/payments/${encodeURIComponent(paymentId)}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const response = await fetch(
+      `${MP_API}/v1/payments/${encodeURIComponent(paymentId)}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+      }
+    );
 
     const payment = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error("[doacao] webhook: erro ao consultar pagamento", paymentId, response.status);
+      console.error(
+        "[doacao] webhook: erro ao consultar pagamento",
+        paymentId,
+        response.status
+      );
       res.status(200).json({ ok: true, error: "lookup_failed" });
       return;
     }
 
-    console.log(
-      "[doacao]",
-      JSON.stringify({
-        id: payment.id,
-        status: payment.status,
-        status_detail: payment.status_detail,
-        amount: payment.transaction_amount,
-        currency: payment.currency_id,
-        method: payment.payment_method_id,
-        installments: payment.installments,
-        external_reference: payment.external_reference,
-        payer_email: payment.payer && payment.payer.email,
-        date_approved: payment.date_approved,
-      })
-    );
+    /* o pagamento consultado tem que ser o mesmo da notificação */
+    if (String(payment.id) !== paymentId) {
+      console.warn("[doacao] webhook: id divergente", paymentId);
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
 
-    res.status(200).json({ ok: true, status: payment.status });
+    const amount = Number(payment.transaction_amount);
+    const currency = String(payment.currency_id || "");
+    const reference = String(payment.external_reference || "");
+    const status = String(payment.status || "");
+
+    const valorOk = Number.isFinite(amount) && amount >= MIN_AMOUNT && amount <= MAX_AMOUNT;
+    const moedaOk = currency === "BRL";
+    const referenciaOk = reference.indexOf("doacao-") === 0;
+
+    if (!valorOk || !moedaOk || !referenciaOk) {
+      console.warn(
+        "[doacao] webhook: pagamento fora do padrão",
+        JSON.stringify({
+          id: payment.id,
+          status: status,
+          amount: Number.isFinite(amount) ? amount : null,
+          currency: currency,
+          referencia_ok: referenciaOk,
+        })
+      );
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
+
+    /* evita registrar o mesmo evento duas vezes (o MP reenvia notificações) */
+    const dedupeKey = `${paymentId}:${status}`;
+    if (!processed.has(dedupeKey)) {
+      processed.add(dedupeKey);
+      if (processed.size > 2000) processed.clear();
+
+      console.log(
+        "[doacao]",
+        JSON.stringify({
+          id: payment.id,
+          status: status,
+          status_detail: payment.status_detail,
+          amount: amount,
+          currency: currency,
+          method: payment.payment_method_id,
+          installments: payment.installments,
+          external_reference: reference,
+          payer_email: maskEmail(payment.payer && payment.payer.email),
+          date_approved: payment.date_approved,
+        })
+      );
+    }
+
+    res.status(200).json({ ok: true, status: status });
   } catch (err) {
-    console.error("[doacao] webhook: falha de rede", err);
+    console.error(
+      "[doacao] webhook: falha de rede",
+      err && err.name === "AbortError" ? "timeout" : String(err && err.message)
+    );
     res.status(200).json({ ok: true, error: "network" });
+  } finally {
+    clearTimeout(timer);
   }
 };

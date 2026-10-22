@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "npx vercel dev",
     "deploy": "npx vercel --prod",
-    "logs": "npx vercel logs --prod"
-  }
+    "logs": "npx vercel logs --prod",
+    "test": "node --test test/security.test.js"
+  },
+  "license": "UNLICENSED"
 }
